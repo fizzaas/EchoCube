@@ -1,8 +1,9 @@
 #include <Wire.h>
-#include <I2Cdev.h>
+//#include <I2Cdev.h>
 #include <Math.h>
 #include <MPU6050_6Axis_MotionApps20.h>
-#include <MPU6050.h>
+//#include <MPU6050.h>
+//#include <avr/pgmspace.h>
 
 //--------------REGULAR SETUP---------------//
 #define LED_PIN 13 
@@ -37,10 +38,7 @@ volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin h
 
 
 //-------FUNCTION DEFINTIONS-----------//
-class devMPU:MPU6050 {
-    public:
-void devMPU::initializeMPU(uint8_t *accelOffsetX, uint8_t *accelOffsetY,uint8_t *accelOffsetZ, uint8_t *currAccelX,uint8_t *currAccelY,uint8_t *currAccelZ);
-bool devMPU::mpuMonitor(uint8_t *currAccelX,uint8_t *currAccelY,uint8_t *currAccelZ);
-void devMPU::mpuAcquire(uint8_t *accelOffsetX, uint8_t *accelOffsetY,uint8_t *accelOffsetZ, uint8_t *currAccelX, uint8_t *currAccelY, uint8_t *currAccelZ, uint8_t *currYaw, uint8_t *currPitch, uint8_t *currRoll);
+uint8_t initializeMPU(int16_t *accelOffsetX, int16_t *accelOffsetY,int16_t *accelOffsetZ, int16_t *currAccelX,int16_t *currAccelY,int16_t *currAccelZ);
+uint8_t mpuMonitor(int16_t *currAccelX,int16_t *currAccelY,int16_t *currAccelZ);
+uint8_t mpuAcquire(int16_t *accelOffsetX, int16_t *accelOffsetY,int16_t *accelOffsetZ, int16_t *currAccelX, int16_t *currAccelY, int16_t *currAccelZ, int16_t *currYaw, int16_t *currPitch, int16_t *currRoll);
 void dmpDataReady();
-}

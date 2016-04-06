@@ -1,24 +1,27 @@
-#include <Wire.h>
+/* #include <Wire.h>
 #include <I2Cdev.h>
 #include <Math.h>
 #include <MPU6050_6Axis_MotionApps20.h>
-#include <MPU6050.h>
-#include <mpu.h>
-#include <avr/pgmspace.h>
+#include <MPU6050.h> */
+#include "devMPU.h"
+//#include <avr/pgmspace.h>
 
-//--------GLOBAL VARIABLES AND CONSTRUCTOR---------//
+//--------GLOBAL VARIABLES---------//
 bool dmpReady = false;  // set true if DMP init was successful
 uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 //uint8_t fifoBuffer[64]; // FIFO storage buffer
+MPU6050 mpu;
 
-devMPU::devMPU(){
-		
-}
 //------------------------------------------------//
 
-void devMPU::initializeMPU(uint8_t *accelOffsetX, uint8_t *accelOffsetY,uint8_t *accelOffsetZ, uint8_t *currAccelX,uint8_t *currAccelY,uint8_t *currAccelZ){
+uint8_t initializeMPU(int16_t *accelOffsetX, int16_t *accelOffsetY,int16_t *accelOffsetZ, int16_t *currAccelX,int16_t *currAccelY,int16_t *currAccelZ){
 
-uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
+/*MUST DECIDE WHETHER TO USE*/
+/*ERROR CODES:
+1: no connection of MPU in hardware
+2: no DMP initialization
+*/
+uint8_t initErrorCode=0;
 
 // ================================================================
 // ===                      INITIAL SETUP                       ===
@@ -27,19 +30,23 @@ uint8_t devStatus;      // return status after each device operation (0 = succes
   // CONNECT DEVICE TO I2C BUS
 
 // join I2C bus (I2Cdev library doesn't do this automatically)
-  Wire::begin();
+  Wire.begin();
 
 //  Serial.begin(38400);
 //  while (!Serial);
 //
 //  // initialize device
 //  Serial.println(F("Initializing I2C devices..."));
-  MPU6050::initialize();
+  mpu.initialize();
 
 
   // TEST MPU CONNECTION
 
 //  // verify connection
+  if( !(mpu.testConnection()) ){ /*Added MPU connection check*/
+    initErrorCode=1;
+    return initErrorCode;
+  }
 //  Serial.println(F("Testing device connections..."));
 //  Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
@@ -53,7 +60,7 @@ uint8_t devStatus;      // return status after each device operation (0 = succes
   // CONFIGURE MPU SETTINGS
 
   //Low pass filtering
-  //MPU6050::setDLPFMode(1);
+  //mpu.setDLPFMode(1);
 
   //Set tap detection on XYZ axes
   /* dmp_set_tap_thresh(1,500);
@@ -63,22 +70,22 @@ uint8_t devStatus;      // return status after each device operation (0 = succes
   
   
   // LOAD AND CONFIGURE THE DMP
-  
+  uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
 //  Serial.println(F("Initializing DMP..."));
-    devStatus=MPU6050::dmpInitialize();
+    devStatus=mpu.dmpInitialize();
 
   // make sure it worked (returns 0 if so)
   if (devStatus == 0) {
     // turn on the DMP, now that it's ready
 //    Serial.println(F("Enabling DMP..."));
-    MPU6050::setDMPEnabled(true);
+    mpu.setDMPEnabled(true);
 
     // enable Arduino interrupt detection
 //    Serial.println(F("Enabling interrupt detection (Arduino external interrupt 2)..."));
     attachInterrupt(0, dmpDataReady, RISING);
     
 
-	//mpuIntStatus = MPU6050::getIntStatus();
+  //mpuIntStatus = mpu.getIntStatus();
 //    Serial.println("MPU int status:");
 //    Serial.println(mpuIntStatus);
 
@@ -87,17 +94,21 @@ uint8_t devStatus;      // return status after each device operation (0 = succes
     dmpReady = true;
 
     // get expected DMP packet size for later comparison
-    packetSize = MPU6050::dmpGetFIFOPacketSize();
+    packetSize = mpu.dmpGetFIFOPacketSize();
     
   } else {
-    // ERROR!
+    /*Failed to intialize dmp*/
     // 1 = initial memory load failed
     // 2 = DMP configuration updates failed
     // (if it's going to break, usually the code will be 1)
 //    Serial.print(F("DMP Initialization failed (code "));
 //    Serial.print(devStatus);
 //    Serial.println(F(")"));
+    initErrorCode=2;
+    return initErrorCode; 
+
   }
+
 
 
   // RUN CALIBRATION
@@ -105,9 +116,9 @@ uint8_t devStatus;      // return status after each device operation (0 = succes
   // According to manual, user should place the cube on table for 10 seconds to allow for accelerometer to calibrate
   // Accelerometer calibration: apply offsets
 
-  uint8_t tempOffsetX=0;
-  uint8_t tempOffsetY=0;
-  uint8_t tempOffsetZ=0;
+  int16_t tempOffsetX=0;  /*CHANGED TO INT16*/
+  int16_t tempOffsetY=0;
+  int16_t tempOffsetZ=0;
 
 
   //Get offset as average over 10 seconds
@@ -118,10 +129,10 @@ uint8_t devStatus;      // return status after each device operation (0 = succes
   *accelOffsetZ=0;
   unsigned long startTime=millis();
   while ((millis()-startTime)<10000){
-    mpuMonitor(currAccelX,currAccelY,currAccelZ);
-    tempOffsetX=(tempOffsetX+currAccelX/2048);
-    tempOffsetY=(tempOffsetY+currAccelY/2048);
-    tempOffsetZ=(tempOffsetZ+currAccelZ/2048);
+    mpuMonitor(currAccelX,currAccelY,currAccelZ); /*Class call added*/
+    tempOffsetX=(tempOffsetX+*(currAccelX)/2048);
+    tempOffsetY=(tempOffsetY+*(currAccelY)/2048);
+    tempOffsetZ=(tempOffsetZ+*(currAccelZ)/2048);
     count++;
   }
 
@@ -131,9 +142,11 @@ uint8_t devStatus;      // return status after each device operation (0 = succes
 
   *accelOffsetX=tempOffsetX;
   *accelOffsetY=tempOffsetY;
-  *accelOffsetZ=tempOffsetz;
+  *accelOffsetZ=tempOffsetZ;
 
-  pinMode(LED_PIN,output);
+  //pinMode(LED_PIN,output); /*No more LEDs for failure checks*/
+
+  return initErrorCode;
 }
 
 
@@ -145,45 +158,49 @@ uint8_t devStatus;      // return status after each device operation (0 = succes
 // PRIVATE METHOD TO MONITOR FOR DATA RECEIVED
 // Blink LED on Arduino to indicate problems instead of serial printing during actual operation, due to UART already being in use
 
-bool devMPU::mpuMonitor(uint8_t *currAccelX,uint8_t *currAccelY,uint8_t *currAccelZ){
+uint8_t mpuMonitor(int16_t *currAccelX,int16_t *currAccelY,int16_t *currAccelZ){
 
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 uint16_t fifoCount;     // count of all bytes currently in FIFO
+/*MUST DECIDE WHETHER TO USE*/
+/*ERROR CODES:
+1: DMP not ready
+2: No interrupt received
+3: FIFO OFLOW
+4: Other (unknown)
+*/
+uint8_t monitorErrorCode=0;
 
-	
-  //PROGRAMMING FAILURE CHECK
-  bool blinkState=0;
+
   
-  if (!dmpReady) return false;
-  // HOLD LED ON TO INDICATE PROBLEM
-    blinkState = 1;
-    digitalWrite(LED_PIN, blinkState);
-
+  //PROGRAMMING FAILURE CHECK
+  if (!dmpReady){
+    monitorErrorCode=1;
+    return monitorErrorCode;
+  }
+  
   //NO-INTERRUPT CHECK
-  // wait for MPU interrupt or extra packet(s) available
+  // If fails, must wait for MPU interrupt or extra packet(s) to become available
+  // Also catches if interrupt line disconnected, or other hardware issues (e.g. power loss)
   if(!mpuInterrupt && (fifoCount < packetSize)){
-    return false;
+    monitorErrorCode=2;
+    return monitorErrorCode;
   }
 
   // reset interrupt flag and get INT_STATUS byte
   mpuInterrupt = false;
-  mpuIntStatus = MPU6050::getIntStatus();
+  mpuIntStatus = mpu.getIntStatus();
 
   // get current FIFO count
-  fifoCount = MPU6050::getFIFOCount();
+  fifoCount = mpu.getFIFOCount();
 
   // FIFO OVERFLOW CHECK
   // check for overflow (this should never happen unless our code is too inefficient)
   if ((mpuIntStatus & 0x10) || fifoCount == 1024) { // mpu FIFO OFLOW flag is raised or fifoCount has max of 1024 (max # of bytes in buffer)
-    // BLINK LED 5x TO INDICATE OVERFLOW
-    for(uint8_t i=0; i<6; i++){
-      blinkState = ~blinkstate;
-      digitalWrite(LED_PIN, blinkState);
-      delay(100);
-    }
-	// reset so we can continue cleanly
-    MPU6050::resetFIFO();
-    return false;
+   monitorErrorCode=3; 
+  // reset so we can continue cleanly
+    mpu.resetFIFO();
+    return monitorErrorCode;
   }
   
   
@@ -191,23 +208,25 @@ uint16_t fifoCount;     // count of all bytes currently in FIFO
   else if (mpuIntStatus & 0x02) {
 
     // wait for correct available data length, should be a VERY short wait
-    while (fifoCount < packetSize) fifoCount = MPU6050::getFIFOCount();
+    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
 
     // read a packet from FIFO
-    //MPU6050::getFIFOBytes(fifoBuffer, packetSize);
+    //mpu.getFIFOBytes(fifoBuffer, packetSize);
 
     // track FIFO count here in case there is > 1 packet available
     // (this lets us immediately read more without waiting for an interrupt)
     fifoCount -= packetSize;
-	
-	//mpuMONITOR gets values of acceleration, too...
-	//to provide for offset calculation in calibration (redundancy - to improve)
-	MPU6050::getAcceleration(currAccelX,currAccelY,currAccelZ);
+  
+  //mpuMONITOR gets values of acceleration, too...
+  //to provide for offset calculation in calibration (redundancy - to improve)
+  mpu.getAcceleration(currAccelX,currAccelY,currAccelZ);
 
-    return true;
+    return monitorErrorCode;
   }
 
-  return false;
+  //Unknown error
+  monitorErrorCode=4;
+  return monitorErrorCode;
 }
 
 
@@ -215,10 +234,12 @@ uint16_t fifoCount;     // count of all bytes currently in FIFO
 
 
 // PUBLIC METHOD TO PROVIDE DATA ACQUIRED FROM MPU TO DEPENDENT SYSTEMS
-void devMPU::mpuAcquire(uint8_t *accelOffsetX, uint8_t *accelOffsetY,uint8_t *accelOffsetZ, uint8_t *currAccelX, uint8_t *currAccelY, uint8_t *currAccelZ, uint8_t *currYaw, uint8_t *currPitch, uint8_t *currRoll){
+uint8_t mpuAcquire(int16_t *accelOffsetX, int16_t *accelOffsetY,int16_t *accelOffsetZ, int16_t *currAccelX, int16_t *currAccelY, int16_t *currAccelZ, int16_t *currYaw, int16_t *currPitch, int16_t *currRoll){ /*Changed to int16*/
 
 int16_t rot[3]; //Equivalent to uint8_t yaw; uint8_t pitch; uint8_t roll;
 int16_t accel[3];//Equivalent to uint8_t accelX; uint8_t accelY; uint8_t accelZ;
+//Error flag
+uint8_t errorCode;
 
 //DEFAULT SEND 0's
 for(uint8_t j=0; j<4;j++){
@@ -229,8 +250,11 @@ for(uint8_t k=0; k<4;k++){
   rot[k]=0;
 }
 
+//Monitor MPU
+errorCode=mpuMonitor(currAccelX,currAccelY,currAccelZ);
+
 //IF PROBLEM, SEND PREVIOUS VALUES
-    if(!mpuMonitor(currAccelX,currAccelY,currAccelZ)){
+    if(errorCode!=0){
        accel[0]=*currAccelX;
        accel[1]=*currAccelY;
        accel[2]=*currAccelZ;
@@ -241,30 +265,30 @@ for(uint8_t k=0; k<4;k++){
     }
 
 //IF GOT VALUES, SUPPLY NEW VALUES
-    else if(mpuMonitor(currAccelX,currAccelY,currAccelZ)){
+    else if(errorCode==0){
 
-	// display raw acceleration values
+  // display raw acceleration values
     // Chosen getAcceleration method because only one showing approximately independent dimensions
     // ALL others having problems; linearAccelInWorld in particular only giving zeroes, and linearAccel giving all ~same
     #ifdef MPU_RAW_ACCEL
-    MPU6050::getAcceleration(accel,accel+1,accel+2);
-    accel[0]=(accel[0] - *accelOffsetX) // Components with offset applied
-    accel[1]=(accel[1] - *accelOffsetY) // No scaling factor 2048, to maximize resolution in integer rep.
-    accel[2]=(accel[2] - *accelOffsetZ)
+    mpu.getAcceleration(accel,accel+1,accel+2);
+    accel[0]=(accel[0] - *accelOffsetX); // Components with offset applied
+    accel[1]=(accel[1] - *accelOffsetY); // No scaling factor 2048, to maximize resolution in integer rep.
+    accel[2]=(accel[2] - *accelOffsetZ);
     #endif
 
-	// TO DO: WILL DETERMINE AXIS OF MAX DIFFERENCE BETWEEN accel AND currAccel VALUES...
-	// AND DIVIDE OTHER AXES' VALUES BY DERIVATIVE (USING TIMER COUNT)
-	
-	// -OR- TAKE TIME AVERAGE OF BUFFERED VALUES AND DIVIDE OTHERS BY AXIS OF MAX RATE OF CHANGE
-	
-	// -OR- MAX/MIN HOLD VALUES ON AXIS AND FIND RATE OF CHANGE OF PEAKS. DIVIDE OTHER AXES BY MAX RATE OF CHANGE
-	
-	
+  // TO DO: WILL DETERMINE AXIS OF MAX DIFFERENCE BETWEEN accel AND currAccel VALUES...
+  // AND DIVIDE OTHER AXES' VALUES BY DERIVATIVE (USING TIMER COUNT)
+  
+  // -OR- TAKE TIME AVERAGE OF BUFFERED VALUES AND DIVIDE OTHERS BY AXIS OF MAX RATE OF CHANGE
+  
+  // -OR- MAX/MIN HOLD VALUES ON AXIS AND FIND RATE OF CHANGE OF PEAKS. DIVIDE OTHER AXES BY MAX RATE OF CHANGE
+  
+  
     // display raw gyroscope values
     //Took raw values because all others not independent (and dmpGetGyro in particular not sensitive)
     #ifdef MPU_RAW_GYRO 
-    MPU6050::getRotation(rot,rot+1,rot+2);
+    mpu.getRotation(rot,rot+1,rot+2);
     /* rot[0]=(rot[0]/16.4); // No scaling of rotation, so as maximize resolution with integer
     rot[1]=(rot[1]/16.4);
     rot[2]=(rot[2]/16.4); */
@@ -282,22 +306,26 @@ for(uint8_t k=0; k<4;k++){
 
 //Print out and update "previous" values to current ones
 #ifdef MPU_RAW_ACCEL
-	#ifdef accelAsComponents
-		Serial.print(accel[0] + ", " + accel[1] + ", " + accel[2]));
-	#endif
-	#ifdef accelAsMag
+
+/*  FOR DEBUG, SERIAL PRINT
+  #ifdef accelAsComponents
+    Serial.print(accel[0] + ", " + accel[1] + ", " + accel[2]));
+  #endif
+  #ifdef accelAsMag
         Serial.print(sqrt((abs(accel[0]))^2+(abs(accel[1]))^2+(abs(accel[2]))^2));
-	#endif
-*currAccelX=accel[0];
-*currAccelY=accel[1];
-*currAccelZ=accel[2];
+  #endif
+*/
+
+  *currAccelX=accel[0];
+  *currAccelY=accel[1];
+  *currAccelZ=accel[2];
 #endif
 
+
 #ifdef MPU_RAW_GYRO
-Serial.print(rot[0] + ", " + rot[1] + ", " + rot[2]);
-*currYaw=rot[0];
-*currPitch=rot[1];
-*currRoll=rot[2];
+  *currYaw=rot[0];
+  *currPitch=rot[1];
+  *currRoll=rot[2];
 #endif
 
 
@@ -305,12 +333,16 @@ Serial.print(rot[0] + ", " + rot[1] + ", " + rot[2]);
     if(&(devAddr+TAPXYZ)){ //If tap received register goes high, send 1 tap indication
       Serial.print(", 1");
     }
-	#ifdef MANUAL_TAP
+  #ifdef MANUAL_TAP
     else if(gotTaps(rot[0],rot[1],rot[2],sFIFO_Y,sFIFO_P,sFIFO_R)){ //Same from gotTap() function, if returns true
       Serial.print(", 1");
     }
-	#endif
+  #endif
 #endif */
+
+
+//Return error code, to indicate type of problem if any
+return errorCode;
 
 }
 
@@ -320,7 +352,7 @@ Serial.print(rot[0] + ", " + rot[1] + ", " + rot[2]);
 // ===               INTERRUPT SERVICE ROUTINE                ===
 // ================================================================
 
-void devMPU::dmpDataReady() {
+void dmpDataReady() {
   mpuInterrupt = true;
 }
 
@@ -352,12 +384,12 @@ void devMPU::dmpDataReady() {
       }
     }
     
-	//If BW of sample reaches cutoff and peak is sufficiently high, got pulse
+  //If BW of sample reaches cutoff and peak is sufficiently high, got pulse
     if((yBW>TAP_THRESH_BW && max[0]>TAP_THRESH_H)||(pBW>TAP_THRESH_BW && max[1]>TAP_THRESH_H)||(rBW>TAP_THRESH_BW && max[2]>TAP_THRESH_H)){ 
       return true;
     }
-	
-	return false;
+  
+  return false;
 }
 
 // ================================================================
