@@ -18,13 +18,23 @@ void setup() {
     mpu_init = mpu.initializeMPU(&(offset_data[0]), &(offset_data[1]), &(offset_data[2]), &(offset_data[3]), &(offset_data[4]), &(offset_data[5]));
     mpu_arb++;
   }
+  /* Make sure the link to the server is active. */
+  while (!esp.link()) { delay(5000); }
 }
 
 void loop() {
   /* Read data */
   mpu.mpuAcquire(&(offset_data[0]), &(offset_data[1]), &(offset_data[2]), &(mpu_data[0]), &(mpu_data[1]), &(mpu_data[2]), &(mpu_data[3]), &(mpu_data[4]), &(mpu_data[5]));
+  /* Process data */
+  String send_data = "";
+  for (int i = 0; i < 6; i++)
+  {
+    String append = String(mpu_data[i]);
+    send_data.concat(append);
+  }
+  String send_len = String(send_data.length());
   /* Send data */
-  no_link_detected = esp.sendData(mpu_data);
+  no_link_detected = esp.sendData(send_len, send_data);
   // If we experienced an unsuccessful send data
   if (no_link_detected)
   {
