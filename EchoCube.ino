@@ -36,26 +36,33 @@ uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 //uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 void setup() {
+  Serial.begin(4800);
+  pinMode(13,OUTPUT);
   /* Initialize the ESP and verify successful connection. */
   bool esp_init = false; uint8_t esp_arb = 0;
   while (!esp_init && esp_arb < 5)
   {
     esp_init = initESP();
+    Serial.println(esp_init);
+    esp_arb++;
   }
   /* Initialize the MPU and verify successful initialization. */
   uint8_t mpu_init = 1; uint8_t mpu_arb = 0;
   while (mpu_init != 0 && mpu_arb < 10)
   {
     mpu_init = initializeMPU(&(offset_data[0]), &(offset_data[1]), &(offset_data[2]), &(offset_data[3]), &(offset_data[4]), &(offset_data[5]));
+    Serial.println(mpu_init);
     mpu_arb++;
   }
   /* Make sure the link to the server is active. */
-  while (!linkPresent()) { delay(5000); }
+  while (!linkPresent()) { delay(5000); Serial.println("stuck help!"); }
+  //digitalWrite(13,HIGH);
 }
 
 void loop() {
   /* Read data */
   mpuAcquire(&(offset_data[0]), &(offset_data[1]), &(offset_data[2]), &(mpu_data[0]), &(mpu_data[1]), &(mpu_data[2]), &(mpu_data[3]), &(mpu_data[4]), &(mpu_data[5]));
+  Serial.println(mpu_data[1]);
   /* Process data */
   String send_data = "";
   for (int i = 0; i < 6; i++)
@@ -66,12 +73,14 @@ void loop() {
   }
   String send_len = String(send_data.length());
   /* Send data */
-  boolean no_link_detected = sendData(send_len, send_data);
+  boolean link_detected = sendData(send_len, send_data);
+  Serial.println(link_detected);
   // If we experienced an unsuccessful send data
-  if (no_link_detected)
-  {
-    while (!linkPresent()) { delay(5000); }
-  }
+  //if (!link_detected)
+  //{
+    //while (!linkPresent()) { delay(5000); }
+  //}
+  delay(200);
 }
 
 boolean initESP(void)
@@ -246,7 +255,8 @@ uint8_t initErrorCode=0;
   *accelOffsetZ=0;
   unsigned long startTime=millis();
   while ((millis()-startTime)<10000){
-    mpuMonitor(currAccelX,currAccelY,currAccelZ); /*Class call added*/
+    Serial.println("Error code mpu:");
+    Serial.println(mpuMonitor(currAccelX,currAccelY,currAccelZ));
     tempOffsetX=(tempOffsetX+*(currAccelX)/2048);
     tempOffsetY=(tempOffsetY+*(currAccelY)/2048);
     tempOffsetZ=(tempOffsetZ+*(currAccelZ)/2048);
@@ -314,7 +324,7 @@ uint8_t monitorErrorCode=0;
   // FIFO OVERFLOW CHECK
   // check for overflow (this should never happen unless our code is too inefficient)
   if ((mpuIntStatus & 0x10) || fifoCount == 1024) { // mpu FIFO OFLOW flag is raised or fifoCount has max of 1024 (max # of bytes in buffer)
-   monitorErrorCode=3; 
+   //monitorErrorCode=3; 
   // reset so we can continue cleanly
     mpu.resetFIFO();
     return monitorErrorCode;
@@ -343,6 +353,7 @@ uint8_t monitorErrorCode=0;
 
   //Unknown error
   monitorErrorCode=4;
+
   return monitorErrorCode;
 }
 
@@ -369,6 +380,9 @@ for(uint8_t k=0; k<4;k++){
 
 //Monitor MPU
 errorCode=mpuMonitor(currAccelX,currAccelY,currAccelZ);
+
+Serial.println("Error code:");
+Serial.println(errorCode);
 
 //IF PROBLEM, SEND PREVIOUS VALUES
     if(errorCode!=0){
