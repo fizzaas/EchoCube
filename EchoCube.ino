@@ -76,10 +76,11 @@ void loop() {
   boolean link_detected = sendData(send_len, send_data);
   Serial.println(link_detected);
   // If we experienced an unsuccessful send data
-  //if (!link_detected)
-  //{
+  if (!link_detected)
+  {
+    delay(500);
     //while (!linkPresent()) { delay(5000); }
-  //}
+  }
   delay(200);
 }
 
